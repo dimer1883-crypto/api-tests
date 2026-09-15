@@ -45,10 +45,11 @@ pytest -v
 
 - [x] Урок 1. Что такое API-тест: GET-запрос, статус-код, JSON, библиотека requests
 - [x] Урок 2. POST-запрос: создание ресурса и проверка ответа сервера
-- [ ] Урок 3. Фикстуры pytest и базовый URL (вынос в conftest.py)
-- [ ] Урок 4. Параметризация и негативные проверки (404, 400)
-- [ ] Урок 5. Схемы ответа (проверка структуры JSON)
-- [ ] Урок 6. Авторизация: токены, заголовки
+- [x] Урок 3. Фикстуры pytest и базовый URL (conftest.py)
+- [ ] Урок 4. Негативные проверки: 404 и 400 (как система отказывает)
+- [ ] Урок 5. Параметризация тестов (@pytest.mark.parametrize)
+- [ ] Урок 6. Схемы ответа (проверка структуры и типов JSON)
+- [ ] Урок 7. Авторизация: токены, заголовки (переход на GitHub REST API)
 - [ ] Дальше по договорённости: CI (GitHub Actions), Allure
 
 ## Целевой стенд для практики
@@ -138,3 +139,64 @@ def test_create_user():
 Запуск: `pytest -v` → `2 passed`.
 
 Коммит: `Lesson 2: POST create user` (40da14b).
+
+---
+
+## Урок 3. Фикстуры pytest и conftest.py
+
+Фикстура — подготовка, которую pytest выполняет перед тестом и подкладывает тесту по
+имени параметра. `conftest.py` pytest читает автоматически, импортировать не нужно.
+`scope="session"` — фикстура создаётся один раз на весь прогон (для неизменных данных,
+например адреса стенда).
+
+Файл `tests/conftest.py` (работает и в корне проекта — тогда фикстура видна вообще всем
+подпапкам; в `tests/` она видна всем файлам внутри `tests`):
+
+```python
+import pytest
+
+@pytest.fixture(scope="session")
+def base_url():
+    return "https://reqres.in/api"
+```
+
+Тесты получают адрес через параметр `base_url` вместо своей константы `BASE_URL`:
+
+```python
+import requests
+
+def test_get_single_user(base_url):
+    response = requests.get(f"{base_url}/users/2")
+
+    assert response.status_code == 200
+
+    data = response.json()["data"]
+    assert data["first_name"] == "Janet"
+    assert data["last_name"] == "Weaver"
+```
+
+```python
+import requests
+
+def test_create_user(base_url):
+    payload = {"name": "Dmitry", "job": "QA Engineer"}
+
+    response = requests.post(f"{base_url}/users", json=payload)
+
+    assert response.status_code == 201
+
+    body = response.json()
+    assert body["name"] == "Dmitry"
+    assert body["job"] == "QA Engineer"
+
+    assert "id" in body
+    assert "createdAt" in body
+```
+
+Связка работает по имени: параметр теста должен точно совпадать с именем фикстуры, иначе
+pytest скажет `fixture '...' not found`. Полезная команда: `pytest --fixtures` — показать
+все доступные фикстуры.
+
+Запуск: `pytest -v` → `2 passed` (то же, что до рефакторинга — поведение не изменилось).
+
+Коммит: `Lesson 3: base_url fixture in conftest` (1150188).
