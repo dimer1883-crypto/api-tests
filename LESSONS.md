@@ -45,8 +45,8 @@ pytest -v
 
 - [x] Урок 1. Что такое API-тест: GET-запрос, статус-код, JSON, библиотека requests
 - [x] Урок 2. POST-запрос: создание ресурса и проверка ответа сервера
-- [x] Урок 3. Фикстуры pytest и базовый URL (conftest.py)
-- [ ] Урок 4. Негативные проверки: 404 и 400 (как система отказывает)
+- [x] Урок 3. Фикстуры pytest и базовый URL (conftest.py в корне проекта)
+- [x] Урок 4. Негативные проверки: 404 и 400 (как система отказывает)
 - [ ] Урок 5. Параметризация тестов (@pytest.mark.parametrize)
 - [ ] Урок 6. Схемы ответа (проверка структуры и типов JSON)
 - [ ] Урок 7. Авторизация: токены, заголовки (переход на GitHub REST API)
@@ -200,3 +200,51 @@ pytest скажет `fixture '...' not found`. Полезная команда: 
 Запуск: `pytest -v` → `2 passed` (то же, что до рефакторинга — поведение не изменилось).
 
 Коммит: `Lesson 3: base_url fixture in conftest` (1150188).
+
+---
+
+## Урок 4. Негативные проверки: 404 и 400
+
+Позитивный тест проверяет, что система работает при верных данных; негативный — что она
+корректно отказывает при неверных. Коды: 4xx — виноват клиент (неверный запрос, объект
+не найден), 5xx — виноват сервер (это всегда баг). В негативных тестах проверяют не
+только код ответа, но и текст ошибки: его показывает пользователю фронт, значит он тоже
+часть контракта API.
+
+Файл `tests/test_negative.py`:
+
+```python
+import requests
+
+def test_user_not_found(base_url):
+    # запрашиваем пользователя с заведомо несуществующим id
+    response = requests.get(f"{base_url}/users/23")
+
+    # сервер обязан честно ответить 404 Not Found
+    assert response.status_code == 404
+
+def test_login_without_password(base_url):
+    # отправляем логин без пароля
+    response = requests.post(f"{base_url}/login", json={"email": "dmitry@test.ru"})
+
+    assert response.status_code == 400
+
+    body = response.json()
+    assert body["error"] == "Missing password"
+
+def test_login_with_wrong_credentials(base_url):
+    # логин есть, пароль неверный
+    response = requests.post(
+        f"{base_url}/login",
+        json={"email": "dmitry@test.ru", "password": "wrong"},
+    )
+
+    assert response.status_code == 400
+
+    assert response.json()["error"] == "user not found"
+```
+
+Запуск: `pytest -v` → `5 passed`.
+
+Коммит: `Lesson 4: negative tests (404, 400)` (13dde2a).
+
