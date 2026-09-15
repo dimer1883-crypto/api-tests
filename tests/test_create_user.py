@@ -1,11 +1,9 @@
 import requests
 
-BASE_URL = "https://reqres.in/api"
-
-def test_create_user():
+def test_create_user(base_url):
     payload = {"name": "Dmitry", "job": "QA Engineer"}
 
-    response = requests.post(f"{BASE_URL}/users", json=payload)
+    response = requests.post(f"{base_url}/users", json=payload)
     # сервер должен ответить 201 Created
     assert response.status_code == 201
 
