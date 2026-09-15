@@ -47,12 +47,22 @@ pytest -v
 - [x] Урок 2. POST-запрос: создание ресурса и проверка ответа сервера
 - [x] Урок 3. Фикстуры pytest и базовый URL (conftest.py в корне проекта)
 - [x] Урок 4. Негативные проверки: 404 и 400 (как система отказывает)
-- [ ] Урок 5. Параметризация тестов (@pytest.mark.parametrize)
+- [x] Урок 5. Параметризация тестов (@pytest.mark.parametrize)
+- [x] Урок 5.1. Лимит запросов (429) и смена стенда на dummyjson.com
 - [ ] Урок 6. Схемы ответа (проверка структуры и типов JSON)
 - [ ] Урок 7. Авторизация: токены, заголовки (переход на GitHub REST API)
 - [ ] Дальше по договорённости: CI (GitHub Actions), Allure
 
-## Целевой стенд для практики
+## Стенд для практики
+
+Текущий стенд: https://dummyjson.com — открытый тестовый API без ключа, с реальными
+ошибками (404 с текстом, 400 «Invalid credentials») и генерацией id. Лимит ~100
+запросов в минуту, суточного потолка нет.
+
+Почему ушли с reqres.in: у него лимит анонимного доступа 40 запросов в СУТКИ на IP
+(заголовки X-Ratelimit-Limit: 40, X-Ratelimit-Remaining: 0), а один прогон pytest
+съедает 7–9 запросов. Несколько прогонов — и весь стенд отдаёт 429 до полуночи по UTC
+(04:00 по Саратову). Для ежедневной учёбы не годится.
 
 Переходим на публичный реальный API — GitHub REST (авторизация по токену, живые данные, настоящие ошибки 401/404/422).
 
@@ -247,4 +257,138 @@ def test_login_with_wrong_credentials(base_url):
 Запуск: `pytest -v` → `5 passed`.
 
 Коммит: `Lesson 4: negative tests (404, 400)` (13dde2a).
+
+---
+
+## Урок 5. Параметризация: один тест, много данных
+
+`@pytest.mark.parametrize` заставляет pytest вызвать одну функцию несколько раз с
+разными данными. Первый аргумент — строка с именами параметров через запятую (имена
+обязаны совпадать с параметрами функции), второй — список кортежей, один кортеж = один
+запуск и одна строка в отчёте. Фикстуры и параметры живут в одной сигнатуре: pytest
+собирает аргументы по именам из обоих источников.
+
+`tests/test_users_parametrized.py`:
+
+```python
+import pytest
+import requests
+
+@pytest.mark.parametrize(
+    "user_id, expected_first_name, expected_last_name",
+    [
+        (1, "Emily", "Johnson"),
+        (2, "Michael", "Williams"),
+        (3, "Sophia", "Brown"),
+        (4, "James", "Davis"),
+    ],
+)
+def test_get_user_by_id(base_url, user_id, expected_first_name, expected_last_name):
+    response = requests.get(f"{base_url}/users/{user_id}")
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["id"] == user_id
+    assert data["firstName"] == expected_first_name
+    assert data["lastName"] == expected_last_name
+```
+
+В параметрах отчёта pytest показывает набор в имени теста, например
+`test_get_user_by_id[2-Michael-Williams]`.
+
+Коммит: `Lesson 5: parametrize tests` (724947b).
+
+---
+
+## Урок 5.1. Лимит запросов (429) и смена стенда
+
+Первый прогон параметризованных тестов упал целиком: все 9 тестов вернули 429 вместо
+ожидаемых кодов. Это не баг тестов и не баг API — это лимит: reqres.in разрешает 40
+запросов в сутки на IP для анонимного доступа (заголовки `X-Ratelimit-Limit: 40`,
+`X-Ratelimit-Remaining: 0`, сброс в 00:00 UTC). ПК и NAS выходят в интернет через один
+публичный IP, поэтому лимит выбирается быстро.
+
+Правило на будущее: 429 Too Many Requests — «слишком много запросов», лимит исчерпан.
+У боевых API лимиты тоже есть, и автотесты должны их уважать, иначе CI краснеет из-за
+лимита, а не из-за бага.
+
+Замена стенда на https://dummyjson.com. Это и есть проверка урока 3: адрес живёт в одной
+фикстуре, поменять нужно было одну строку — но эндпоинты и имена полей у нового API
+другие, поэтому тесты переписаны.
+
+`conftest.py`:
+
+```python
+import pytest
+
+@pytest.fixture(scope="session")
+def base_url():
+    return "https://dummyjson.com"
+```
+
+`tests/test_users_parametrized.py` — см. урок 5 (данные уже от dummyjson).
+
+`tests/test_create_user.py`:
+
+```python
+import requests
+
+def test_create_user(base_url):
+    payload = {"firstName": "Dmitry", "lastName": "Erakhtin"}
+
+    response = requests.post(f"{base_url}/users/add", json=payload)
+
+    # сервер должен ответить 201 Created
+    assert response.status_code == 201
+
+    body = response.json()
+    assert body["firstName"] == "Dmitry"
+    assert body["lastName"] == "Erakhtin"
+
+    # id сервер генерирует сам — проверяем только наличие
+    assert "id" in body
+```
+
+`tests/test_negative.py`:
+
+```python
+import requests
+
+def test_user_not_found(base_url):
+    # пользователя с таким id заведомо нет
+    response = requests.get(f"{base_url}/users/9999")
+
+    assert response.status_code == 404
+
+    # у dummyjson вместе с кодом приходит и текст ошибки
+    assert response.json()["message"] == "User with id '9999' not found"
+
+def test_login_without_password(base_url):
+    # отправляем логин без пароля
+    response = requests.post(f"{base_url}/auth/login", json={"username": "emilys"})
+
+    assert response.status_code == 400
+
+    assert response.json()["message"] == "Username and password required"
+
+def test_login_with_wrong_credentials(base_url):
+    # логин есть, пароль неверный
+    response = requests.post(
+        f"{base_url}/auth/login",
+        json={"username": "emilys", "password": "wrong"},
+    )
+
+    assert response.status_code == 400
+
+    assert response.json()["message"] == "Invalid credentials"
+```
+
+Рабочие креды dummyjson (для урока про авторизацию): `emilys` / `emilyspass` → 200 и
+`accessToken` в ответе.
+
+Лимит dummyjson — около 100 запросов в минуту, суточного потолка нет.
+
+Особенность: dummyjson стоит за Cloudflare и режет клиентов с «неродным» User-Agent.
+`requests` и curl проходят, а голый `python-urllib` получает `403 error code: 1010`.
 
