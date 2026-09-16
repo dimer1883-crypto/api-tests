@@ -1,17 +1,16 @@
 import requests
 
 def test_create_user(base_url):
-    payload = {"name": "Dmitry", "job": "QA Engineer"}
+    payload = {"firstName": "Dmitry", "lastName": "Erakhtin"}
 
-    response = requests.post(f"{base_url}/users", json=payload)
+    response = requests.post(f"{base_url}/users/add", json=payload)
+
     # сервер должен ответить 201 Created
     assert response.status_code == 201
 
     body = response.json()
-    assert body["name"] == "Dmitry"
-    assert body["job"] == "QA Engineer"
+    assert body["firstName"] == "Dmitry"
+    assert body["lastName"] == "Erakhtin"
 
-    # id и createdAt сервер генерирует сам — их значение неизвестно,
-    # поэтому проверяем только то, что они появились в ответе
+    # id и createdAt сервер генерирует сам
     assert "id" in body
-    assert "createdAt" in body
