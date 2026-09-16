@@ -49,7 +49,7 @@ pytest -v
 - [x] Урок 4. Негативные проверки: 404 и 400 (как система отказывает)
 - [x] Урок 5. Параметризация тестов (@pytest.mark.parametrize)
 - [x] Урок 5.1. Лимит запросов (429) и смена стенда на dummyjson.com
-- [ ] Урок 6. Схемы ответа (проверка структуры и типов JSON)
+- [x] Урок 6. Проверка структуры ответа (типы и обязательные поля)
 - [ ] Урок 7. Авторизация: токены, заголовки (переход на GitHub REST API)
 - [ ] Дальше по договорённости: CI (GitHub Actions), Allure
 
@@ -391,4 +391,54 @@ def test_login_with_wrong_credentials(base_url):
 
 Особенность: dummyjson стоит за Cloudflare и режет клиентов с «неродным» User-Agent.
 `requests` и curl проходят, а голый `python-urllib` получает `403 error code: 1010`.
+
+---
+
+## Урок 6. Проверка структуры ответа
+
+Тесты значений (статус, конкретное имя) не заметят, если бэкенд переименует поле или
+поменяет его тип. Тест структуры проверяет контракт: обязательные поля на месте и у
+каждого правильный тип. `isinstance(значение, тип)` отвечает, является ли значение
+значением этого типа.
+
+`tests/test_structure.py`:
+
+```python
+import requests
+
+# контракт ответа: какие поля обязаны быть и какого они типа
+USER_FIELDS = {
+    "id": int,
+    "firstName": str,
+    "lastName": str,
+    "email": str,
+    "username": str,
+    "age": int,
+}
+
+def test_user_response_structure(base_url):
+    response = requests.get(f"{base_url}/users/1")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    for field, expected_type in USER_FIELDS.items():
+        assert field in data, f"в ответе нет обязательного поля {field}"
+        assert isinstance(data[field], expected_type), (
+            f"поле {field}: ждали {expected_type.__name__}, "
+            f"получили {type(data[field]).__name__}"
+        )
+```
+
+Приёмы урока: словарь «поле → тип» как контракт в одном месте; второй аргумент `assert`
+как текст сообщения в отчёте (без него видно только AssertionError); проверка «сломай
+нарочно» — поменять `"age": int` на `"age": str` и убедиться, что тест краснеет.
+
+Запуск: `pytest -v` → `9 passed`.
+
+В промышленных проектах такую проверку делают библиотекой `jsonschema`, где схема лежит
+отдельным файлом.
+
+Коммит: `Lesson 6: response structure test; ignore allure-results` (a397c22).
 
