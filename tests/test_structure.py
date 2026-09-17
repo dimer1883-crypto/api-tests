@@ -22,4 +22,4 @@ def test_user_response_structure(base_url):
         assert isinstance(data[field], expected_type), (
             f"поле {field}: ждали {expected_type.__name__}, "
             f"получили {type(data[field]).__name__}"
-    )
+        )
