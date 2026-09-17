@@ -50,8 +50,9 @@ pytest -v
 - [x] Урок 5. Параметризация тестов (@pytest.mark.parametrize)
 - [x] Урок 5.1. Лимит запросов (429) и смена стенда на dummyjson.com
 - [x] Урок 6. Проверка структуры ответа (типы и обязательные поля)
-- [ ] Урок 7. Авторизация: токены, заголовки (переход на GitHub REST API)
-- [ ] Дальше по договорённости: CI (GitHub Actions), Allure
+- [x] Урок 7. Авторизация: токены, заголовки (GitHub REST API)
+- [ ] Урок 8. CI в GitHub Actions (тесты запускаются сами при каждом пуше)
+- [ ] Дальше по договорённости: схемы через jsonschema, публикация Allure-отчёта
 
 ## Стенд для практики
 
@@ -441,4 +442,94 @@ def test_user_response_structure(base_url):
 отдельным файлом.
 
 Коммит: `Lesson 6: response structure test; ignore allure-results` (a397c22).
+
+---
+
+## Урок 7. Авторизация: токены и заголовки
+
+Заголовки запроса (headers) — служебные поля, которые уезжают на сервер вместе с
+запросом: `Authorization` (кто я), `Accept` (в каком формате хочу ответ). Закрытые
+методы без токена отвечают 401; 403 — это «авторизован, но нет прав» или лимит.
+
+Токен НИКОГДА не пишется в код: он живёт в переменной окружения, код его читает.
+На Windows (PowerShell) постоянная запись для текущего пользователя:
+
+    [Environment]::SetEnvironmentVariable("GITHUB_TOKEN", "значение", "User")
+
+После этого нужно ПОЛНОСТЬЮ перезапустить VSCode: процессы получают копию окружения
+в момент запуска, поэтому старая копия токена не видит.
+
+`tests/test_auth.py`:
+
+```python
+import os
+
+import pytest
+import requests
+
+GITHUB_API = "https://api.github.com"
+
+
+@pytest.fixture(scope="session")
+def github_token():
+    token = os.environ.get("GITHUB_TOKEN")
+
+    if not token:
+        pytest.skip("переменная GITHUB_TOKEN не задана — тесты GitHub пропущены")
+
+    return token
+
+
+@pytest.fixture(scope="session")
+def github_headers(github_token):
+    return {
+        "Authorization": f"Bearer {github_token}",
+        "Accept": "application/vnd.github+json",
+    }
+
+
+def test_get_my_profile(github_headers):
+    response = requests.get(f"{GITHUB_API}/user", headers=github_headers)
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["login"] == "dimer1883-crypto"
+
+
+def test_request_without_token():
+    response = requests.get(f"{GITHUB_API}/user")
+
+    assert response.status_code == 401
+
+    assert response.json()["message"] == "Requires authentication"
+
+
+def test_github_user_not_found():
+    response = requests.get(
+        f"{GITHUB_API}/users/etot-polzovatel-tochno-ne-sushchestvuet-123"
+    )
+
+    assert response.status_code == 404
+
+    assert response.json()["message"] == "Not Found"
+```
+
+Приёмы урока: `os.environ.get` читает переменную окружения; фикстура может зависеть от
+другой фикстуры (`github_headers(github_token)`); `pytest.skip` внутри фикстуры помечает
+тесты пропущенными, если секрета нет, — набор остаётся зелёным на чужой машине.
+
+Права токена (classic): минимум. Для урока достаточно нуля галочек; для отправки кода и
+файлов Actions взяты `public_repo` и `workflow`. Срок — 90 дней, значение сохраняется
+в KeePass (шара `\\TRUENAS\vault`).
+
+Запуск: `pytest -v` → `12 passed`.
+
+Ошибка, которую поймали по ходу: `return token` оказался внутри `if not token:` (отступ в
+8 пробелов вместо 4). Тогда при наличии токена функция возвращала None, а заголовок
+получался `Bearer None` и сервер отвечал 401. В отчёте pytest это видно сразу: он печатает
+значения фикстур над упавшим тестом. Второй признак: тест FAILED, а не SKIPPED, значит
+токен в окружении был, а проблема в коде.
+
+Коммит: `Lesson 7: GitHub API auth (token from env)` (fade968).
 
