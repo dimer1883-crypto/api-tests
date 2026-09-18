@@ -51,8 +51,10 @@ pytest -v
 - [x] Урок 5.1. Лимит запросов (429) и смена стенда на dummyjson.com
 - [x] Урок 6. Проверка структуры ответа (типы и обязательные поля)
 - [x] Урок 7. Авторизация: токены, заголовки (GitHub REST API)
-- [ ] Урок 8. CI в GitHub Actions (тесты запускаются сами при каждом пуше)
-- [ ] Дальше по договорённости: схемы через jsonschema, публикация Allure-отчёта
+- [x] Урок 8. CI в GitHub Actions (прогон на каждый пуш, бейдж в README)
+- [ ] Урок 9. CI, часть 2: секрет для GitHub-теста (сейчас он в CI пропускается) и
+      Allure-отчёт артефактом
+- [ ] Дальше по договорённости: схемы через jsonschema, Allure-отчёт на GitHub Pages
 
 ## Стенд для практики
 
@@ -532,4 +534,55 @@ def test_github_user_not_found():
 токен в окружении был, а проблема в коде.
 
 Коммит: `Lesson 7: GitHub API auth (token from env)` (fade968).
+
+---
+
+## Урок 8. CI в GitHub Actions
+
+CI (Continuous Integration) — тесты запускаются автоматически на чужой чистой машине
+при каждом пуше. У GitHub для этого есть Actions: в репозиторий кладётся файл-инструкция
+`.github/workflows/tests.yml`, и GitHub на каждый пуш поднимает виртуалку с Ubuntu,
+ставит Python и библиотеки и прогоняет тесты.
+
+Состав: `requirements.txt` (список зависимостей с версиями — без него чистая машина не
+знает, что ставить), `pytest.ini` (testpaths = tests), сам workflow и бейдж статуса в
+README.
+
+```yaml
+name: Run tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests
+        run: pytest
+```
+
+Важно: `requirements.txt` в PowerShell делать через
+`pip freeze | Out-File -Encoding utf8 requirements.txt` — оператор `>` пишет UTF-16,
+который Linux не читает (это уже проходили в UI-курсе). Файл должен быть ASCII/UTF-8.
+
+Коммиты: `Add README, requirements, pytest.ini` (d9f1937), `Add CI: run pytest on push`
+(583c978). Прогон зелёный, но в логе `11 passed, 1 skipped`: тест `test_get_my_profile`
+в CI пропускается, потому что секрет с токеном в репозитории не заведён, а фикстура
+`github_token` при отсутствии переменной делает `pytest.skip`. Это тема урока 9 —
+зелёный отчёт при фактически непроверенном сценарии.
 
