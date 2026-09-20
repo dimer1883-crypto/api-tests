@@ -54,8 +54,9 @@ pytest -v
 - [x] Урок 8. CI в GitHub Actions (прогон на каждый пуш, бейдж в README)
 - [x] Урок 9. CI, часть 2: секрет репозитория API_TOKEN (в CI 12 passed, без skipped),
       Allure-результаты загружаются артефактом
-- [ ] Урок 10. Проверка контракта библиотекой jsonschema
-- [ ] Дальше по договорённости: Allure-отчёт на GitHub Pages, маркеры smoke/regression
+- [x] Урок 10. Проверка контракта библиотекой jsonschema (14 тестов, CI зелёный)
+- [ ] Урок 11. Маркеры smoke/regression и разные режимы прогона в CI
+- [ ] Дальше по договорённости: Allure-отчёт на GitHub Pages, фикстуры с подготовкой данных
 
 ## Стенд для практики
 
@@ -645,4 +646,77 @@ Artifacts прогона, локально открывается командо
   `git checkout main`, `git push`.
 - Правило гигиены: не править файлы проекта в веб-интерфейсе GitHub, пока работаешь с
   этим проектом локально — иначе получаешь две версии одного файла.
+
+---
+
+## Урок 10. Проверка контракта библиотекой jsonschema
+
+JSON Schema — стандарт описания структуры JSON: какие поля обязательны, какие у них типы,
+что вложено во что. Библиотека `jsonschema` сравнивает данные со схемой, а при расхождении
+выбрасывает `ValidationError` с текстом и путём до проблемного поля (например
+`'29' is not of type 'integer'` для `$.age`).
+
+Схема описывает контракт декларативно: её можно хранить отдельным файлом, положить в
+документацию и отдать бэкенду как договор. В уроке 6 то же самое делали вручную словарём
+«поле → тип» — это был учебный вариант, jsonschema это промышленный стандарт.
+
+`tests/test_schema.py`:
+
+```python
+import pytest
+import requests
+from jsonschema import ValidationError, validate
+
+
+USER_SCHEMA = {
+    "type": "object",
+    "required": ["id", "firstName", "lastName", "age", "email", "hair"],
+    "properties": {
+        "id": {"type": "integer"},
+        "firstName": {"type": "string"},
+        "lastName": {"type": "string"},
+        "age": {"type": "integer"},
+        "email": {"type": "string"},
+        "hair": {
+            "type": "object",
+            "required": ["color"],
+            "properties": {
+                "color": {"type": "string"},
+                "type": {"type": "string"},
+            },
+        },
+    },
+}
+
+
+def test_user_matches_schema(base_url):
+    response = requests.get(f"{base_url}/users/1")
+
+    assert response.status_code == 200
+
+    validate(instance=response.json(), schema=USER_SCHEMA)
+
+
+def test_schema_catches_broken_data():
+    broken_user = {
+        "id": 1,
+        "firstName": "Emily",
+        "lastName": "Johnson",
+        "age": "29",
+        "email": "emily.johnson@x.dummyjson.com",
+        "hair": {"color": "Brown", "type": "Curly"},
+    }
+
+    with pytest.raises(ValidationError):
+        validate(instance=broken_user, schema=USER_SCHEMA)
+```
+
+Приёмы урока: ключи схемы `type` / `required` / `properties`; вложенные объекты описываются
+тем же способом внутри `properties`; `with pytest.raises(ValidationError)` — негативная
+проверка самой валидации (если схема перестанет ловить испорченные данные, тест упадёт).
+
+`jsonschema==4.26.0` добавлен в `requirements.txt` — иначе CI падает на чистой машине.
+
+Коммит: `Lesson 10: validate response schema with jsonschema` (da4f47c).
+CI: `14 passed in 1.82s`.
 
