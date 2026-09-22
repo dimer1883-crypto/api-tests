@@ -55,8 +55,9 @@ pytest -v
 - [x] Урок 9. CI, часть 2: секрет репозитория API_TOKEN (в CI 12 passed, без skipped),
       Allure-результаты загружаются артефактом
 - [x] Урок 10. Проверка контракта библиотекой jsonschema (14 тестов, CI зелёный)
-- [ ] Урок 11. Маркеры smoke/regression и разные режимы прогона в CI
-- [ ] Дальше по договорённости: Allure-отчёт на GitHub Pages, фикстуры с подготовкой данных
+- [x] Урок 11. Маркеры smoke/regression, ночной full-прогон, выбор группы при ручном запуске
+- [ ] Урок 12. Фикстуры с yield: подготовка и уборка данных (setup/teardown)
+- [ ] Дальше по договорённости: Allure-отчёт на GitHub Pages, реальное хранение данных (GitHub issues)
 
 ## Стенд для практики
 
@@ -719,4 +720,52 @@ def test_schema_catches_broken_data():
 
 Коммит: `Lesson 10: validate response schema with jsonschema` (da4f47c).
 CI: `14 passed in 1.82s`.
+
+---
+
+## Урок 11. Маркеры smoke/regression и режимы прогона в CI
+
+Маркер (метка) — пометка на тесте: на обычный прогон не влияет, но позволяет запускать
+группу (`pytest -m smoke`). Smoke — короткий набор ключевых сценариев на каждый пуш;
+regression — всё остальное, обычно ночью.
+
+Маркеры объявляются в pytest.ini (иначе PytestUnknownMarkWarning):
+
+```ini
+[pytest]
+testpaths = tests
+markers =
+    smoke: быстрые проверки ключевых сценариев
+    regression: полный набор проверок
+```
+
+Маркером `smoke` помечены пять тестов: создание пользователя, 404 на несуществующего,
+структура ответа, схема ответа, авторизация на GitHub. Остальные девять — регрессионная
+часть (`pytest -m "not smoke"`, кавычки обязательны — иначе PowerShell отдаёт `not` как
+отдельный аргумент).
+
+Запуски: `pytest -m smoke` → `5 passed, 9 deselected`; `pytest -m "not smoke"` →
+`9 passed, 5 deselected`; `pytest` → `14 passed`.
+
+В workflow два задания и четыре события:
+
+| Событие | Что выполняется |
+| --- | --- |
+| push / pull_request | `smoke` (5 тестов, быстро) |
+| расписание `0 3 * * *` (3:00 UTC = 7:00 МСК+1) | `full` (все тесты) |
+| Run workflow, выбран `smoke` | `smoke` |
+| Run workflow, выбран `full` | `full` |
+
+Ключевые куски конфигурации: `schedule: cron` (пять полей: минута, часы, день, месяц,
+день недели, время в UTC), `workflow_dispatch: inputs: type: choice` (выпадающий список в
+окне ручного запуска), `if:` на уровне задания (условие по событию и выбранной группе через
+`github.event.inputs.group`), разные имена артефактов (`allure-results-smoke` /
+`allure-results-full`), иначе в одном прогоне они перезапишут друг друга.
+
+Кнопка `Run workflow` живёт на странице workflow (`Actions` → в списке слева `Run tests`),
+а не на странице отдельного прогона. Появляется только если в файле есть
+`workflow_dispatch:` и файл лежит в ветке по умолчанию.
+
+Коммиты: `Lesson 11: smoke/regression markers; nightly full run` (bd03cf1),
+`Lesson 11: choose test group on manual run` (0e30ba6).
 
