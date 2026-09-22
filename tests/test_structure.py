@@ -1,3 +1,4 @@
+import pytest
 import requests
 
 # контракт ответа: какие поля обязаны быть и какого они типа
@@ -10,6 +11,8 @@ USER_FIELDS = {
     "age": int,
 }
 
+
+@pytest.mark.smoke
 def test_user_response_structure(base_url):
     response = requests.get(f"{base_url}/users/1")
 

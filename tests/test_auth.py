@@ -25,6 +25,7 @@ def github_headers(github_token):
     }
 
 
+@pytest.mark.smoke
 def test_get_my_profile(github_headers):
     response = requests.get(f"{GITHUB_API}/user", headers=github_headers)
 

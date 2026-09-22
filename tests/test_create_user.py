@@ -1,5 +1,8 @@
+import pytest
 import requests
 
+
+@pytest.mark.smoke
 def test_create_user(base_url):
     payload = {"firstName": "Dmitry", "lastName": "Erakhtin"}
 

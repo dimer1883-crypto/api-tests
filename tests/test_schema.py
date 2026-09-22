@@ -23,12 +23,15 @@ USER_SCHEMA = {
     }
 }
 
+
+@pytest.mark.smoke
 def test_user_matches_schema(base_url):
     response = requests.get(f"{base_url}/users/1")
 
     assert response.status_code == 200
 
     validate(instance=response.json(), schema=USER_SCHEMA)
+
 
 def test_schema_catches_broken_data():
     broken_user = {
@@ -38,7 +41,7 @@ def test_schema_catches_broken_data():
         "age": "29",
         "email": "emily.johnson@x.dummyjson.com",
         "hair": {"color": "Brown", "type": "Curly"},
-}
+    }
 
     with pytest.raises(ValidationError):
-     validate(instance=broken_user, schema=USER_SCHEMA)
+        validate(instance=broken_user, schema=USER_SCHEMA)
