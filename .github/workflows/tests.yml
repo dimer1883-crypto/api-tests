@@ -35,7 +35,7 @@ jobs:
 
       - name: Run smoke tests
         env:
-          GITHUB_TOKEN: ${{secrets.API_TOKEN}}
+          GITHUB_TOKEN: ${{ secrets.API_TOKEN }}
         run: pytest -m smoke --alluredir=./allure-results
 
       - name: Upload allure results
@@ -64,7 +64,7 @@ jobs:
 
       - name: Run all tests
         env:
-          GITHUB_TOKEN: ${{secrets.API_TOKEN}}
+          GITHUB_TOKEN: ${{ secrets.API_TOKEN }}
         run: pytest --alluredir=./allure-results
 
       - name: Upload allure results
