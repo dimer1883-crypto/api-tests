@@ -56,8 +56,9 @@ pytest -v
       Allure-результаты загружаются артефактом
 - [x] Урок 10. Проверка контракта библиотекой jsonschema (14 тестов, CI зелёный)
 - [x] Урок 11. Маркеры smoke/regression, ночной full-прогон, выбор группы при ручном запуске
-- [ ] Урок 12. Фикстуры с yield: подготовка и уборка данных (setup/teardown)
-- [ ] Дальше по договорённости: Allure-отчёт на GitHub Pages, реальное хранение данных (GitHub issues)
+- [x] Урок 12. Фикстуры с yield: подготовка и уборка данных (setup/teardown)
+- [ ] Урок 13. Полный CRUD с настоящим хранением: restful-booker (создание, чтение,
+      обновление, удаление + проверка, что объект исчез)
 
 ## Стенд для практики
 
@@ -768,4 +769,62 @@ markers =
 
 Коммиты: `Lesson 11: smoke/regression markers; nightly full run` (bd03cf1),
 `Lesson 11: choose test group on manual run` (0e30ba6).
+
+---
+
+## Урок 12. Фикстуры с yield: подготовка и уборка данных
+
+Фикстура может не только отдавать значение, но и готовить данные, а после теста убирать
+за собой. Граница — `yield`: всё до него выполняется перед тестом (setup), всё после —
+после теста (teardown), даже если тест упал. Значение тест получает то, что стоит в
+`yield`. По умолчанию область видимости — `function`, то есть для каждого теста фикстура
+отрабатывает заново: каждый тест получает свой объект и не зависит от других.
+
+`tests/test_crud.py`:
+
+```python
+import pytest
+import requests
+
+
+@pytest.fixture
+def created_user(base_url):
+    payload = {"firstName": "Dmitry", "lastName": "Erakhtin"}
+
+    response = requests.post(f"{base_url}/users/add", json=payload)
+    assert response.status_code == 201
+
+    user = response.json()
+    print(f"\nподготовка: создан пользователь с id {user['id']}")
+
+    yield user
+
+    delete_response = requests.delete(f"{base_url}/users/{user['id']}")
+    print(f"уборка: удаляю пользователя {user['id']}, ответ {delete_response.status_code}")
+
+    # dummyjson не хранит созданные объекты, поэтому на удаление отвечает 404.
+    # Уборка не должна ронять прогон, если объекта уже нет.
+    assert delete_response.status_code in (200, 404)
+
+
+def test_created_user_has_id(created_user):
+    assert created_user["id"] > 0
+
+
+def test_created_user_has_expected_fields(created_user):
+    assert created_user["firstName"] == "Dmitry"
+    assert created_user["lastName"] == "Erakhtin"
+```
+
+Проверка порядка: `pytest -s -v tests/test_crud.py` (флаг `-s` показывает print) — видно
+«подготовка → тест → уборка» для каждого теста отдельно.
+
+Правила урока: уборка безопасна при повторном запуске (принимаем и 200, и 404 — объекта
+может уже не быть); падение в тесте даёт статус FAILED, падение в уборке — ERROR.
+dummyjson не хранит созданные объекты по-настоящему, поэтому «проверить, что объект исчез»
+на нём нельзя — это тема урока 13 на restful-booker.
+
+Запуск: `pytest -v` → `16 passed`.
+
+Коммит: `Lesson 12: fixtures with setup and teardown`.
 
