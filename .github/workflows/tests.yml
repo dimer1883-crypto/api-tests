@@ -6,10 +6,18 @@ on:
   schedule:
     - cron: "0 3 * * *"
   workflow_dispatch:
+    inputs:
+      group:
+        description: "Какую группу тестов прогнать"
+        type: choice
+        default: full
+        options:
+          - smoke
+          - full
 
 jobs:
   smoke:
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.group == 'smoke')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -38,7 +46,7 @@ jobs:
           path: allure-results
 
   full:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.group == 'full')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
