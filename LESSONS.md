@@ -57,7 +57,7 @@ pytest -v
 - [x] Урок 10. Проверка контракта библиотекой jsonschema (14 тестов, CI зелёный)
 - [x] Урок 11. Маркеры smoke/regression, ночной full-прогон, выбор группы при ручном запуске
 - [x] Урок 12. Фикстуры с yield: подготовка и уборка данных (setup/teardown)
-- [ ] Урок 13. Полный CRUD с настоящим хранением: restful-booker (создание, чтение,
+- [x] Урок 13. Полный CRUD с настоящим хранением: restful-booker (создание, чтение,
       обновление, удаление + проверка, что объект исчез)
 
 ## Стенд для практики
@@ -827,4 +827,84 @@ dummyjson не хранит созданные объекты по-настоя�
 Запуск: `pytest -v` → `16 passed`.
 
 Коммит: `Lesson 12: fixtures with setup and teardown`.
+
+---
+
+## Урок 13. Полный CRUD с настоящим хранением: restful-booker
+
+Смысл урока: до этого стенд (dummyjson) только делал вид, что создаёт объекты — он отвечал
+201 и возвращал присланные поля, но ничего не хранил. Поэтому последнее утверждение CRUD —
+«объект действительно исчез» — проверить было нельзя. restful-booker хранит данные
+по-настоящему, поэтому здесь цикл закрывается полностью: создали → прочитали → изменили →
+прочитали ещё раз → удалили → убедились, что стало 404.
+
+Стенд: https://restful-booker.herokuapp.com (бронирование номеров). Он бесплатный, без ключа,
+сам себя периодически чистит. Первый запрос после простоя медленный — стенд засыпает на
+хостинге, это не баг теста.
+
+Причуды стенда, которые пришлось принять как есть (и это хороший урок: контракт диктует
+сервер, а не наши ожидания):
+
+| Что делаем | Что отвечает стенд | Комментарий |
+| --- | --- | --- |
+| `POST /auth` с `{"username": "admin", "password": "password123"}` | 200 + `{"token": "..."}` | так выдан токен |
+| неверные креды в `POST /auth` | 200 + `{"reason": "Bad credentials"}` | 401 не отдаёт |
+| `POST /booking` | 200 + `{"bookingid": N}` | не 201, как было у dummyjson |
+| `PUT /booking/{id}` без токена | 403 | токен нужен |
+| успешный `DELETE /booking/{id}` | 201 | тоже непривычный код |
+
+Токен передаётся НЕ заголовком `Authorization`, как в уроке 7 на GitHub, а куки:
+`cookies={"token": api_token}`. Это первое место, где авторизация сделана по-другому — и
+самая частая причина «403 при верном токене».
+
+`conftest.py` — новая фикстура стенда:
+
+```python
+@pytest.fixture(scope="session")
+def booking_url():
+    return "https://restful-booker.herokuapp.com"
+```
+
+`tests/test_booking_crud.py` — две фикстуры и пять тестов:
+
+```python
+@pytest.fixture(scope="session")
+def api_token(booking_url):
+    response = requests.post(
+        f"{booking_url}/auth",
+        json={"username": "admin", "password": "password123"},
+    )
+    assert response.status_code == 200
+    token = response.json()["token"]
+    assert token, "сервер не выдал токен"
+    return token
+
+
+@pytest.fixture
+def created_booking(booking_url, api_token):
+    response = requests.post(f"{booking_url}/booking", json=BOOKING_PAYLOAD)
+    assert response.status_code == 200
+    booking_id = response.json()["bookingid"]
+    yield booking_id
+    # уборка: удаляем созданную бронь, чтобы не оставлять мусор на общем стенде
+    requests.delete(f"{booking_url}/booking/{booking_id}", cookies={"token": api_token})
+```
+
+Что проверяют тесты:
+
+1. `test_created_booking_is_stored` — после создания `GET` возвращает те же поля, что мы
+   отправляли (тест держится на фикстуре `created_booking`, сам ничего не создаёт).
+2. `test_update_booking_changes_data` — `PUT` с токеном меняет данные, и главное: отдельный
+   `GET` после `PUT` подтверждает, что изменилось НА СЕРВЕРЕ, а не только в ответе на `PUT`.
+3. `test_delete_booking_removes_it` — создаём бронь, удаляем, `GET` → 404. Это финальное
+   утверждение CRUD, которое на dummyjson было невозможно.
+4. `test_update_without_token_is_forbidden` — `PUT` без токена → 403.
+5. `test_get_unknown_booking_returns_404` — несуществующий id → 404.
+
+Прогон: `pytest -v tests/test_booking_crud.py` → `5 passed`, полный набор → `20 passed,
+1 skipped` (skip — тест профиля GitHub, если в venv нет `GITHUB_TOKEN`; в CI он проходит).
+CI зелёный.
+
+Коммит: `Lesson 13: full CRUD on restful-booker` (74f477c).
+
 
